@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.mollie-webhook]
 verify_jwt = false
+
+[functions.create-transfer]
+verify_jwt = false

@@ -43,3 +43,6 @@ footer{position:relative;display:flex;justify-content:center;align-items:center;
 .payment-paid{background:#dff5e5;color:#146c35}
 .payment-pending{background:#fff0ce;color:#855600}
 .payment-failed,.payment-cancelled,.payment-expired{background:#ffe0e0;color:#a11a25}
+
+/* Paiement par virement */
+.payment-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.payment-actions button{min-height:62px}.transfer-button{background:#242028;border:2px solid #e50023;color:#fff;font-weight:800;font-size:15px}.transfer-button:disabled{opacity:.5;cursor:not-allowed}.transfer-details{display:grid;grid-template-columns:minmax(110px,1fr) 2fr;gap:14px 20px;margin:24px 0}.transfer-details dt{color:#62565b}.transfer-details dd{margin:0;overflow-wrap:anywhere}.transfer-warning{background:#fff0d4;border-left:4px solid #cf7c00;padding:15px;border-radius:6px;color:#673b00}.confirm-transfer{background:#17653b;border-color:#17653b;color:white;font-size:12px;white-space:normal;min-width:140px}.confirm-transfer:disabled{opacity:.5}.payment-transfer_pending{background:#fff0ce;color:#855600}.payment-transfer_expired{background:#ffe0e0;color:#a11a25}#transfer-result:focus{outline:none}@media(max-width:650px){.payment-actions{grid-template-columns:1fr}.transfer-details{grid-template-columns:1fr;gap:4px}.transfer-details dd{margin-bottom:12px}}
