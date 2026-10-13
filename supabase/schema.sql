@@ -1,8 +1,11 @@
 -- À exécuter dans Supabase SQL Editor. Projet dédié recommandé.
 create extension if not exists pgcrypto;
 create table public.event_settings (id integer primary key default 1 check (id=1),title text not null default 'Repas de Saint-Nicolas',event_details text default '',booking_open boolean not null default false,booking_deadline timestamptz);
-insert into public.event_settings(id) values(1);
+insert into public.event_settings(id,title,event_details,booking_open,booking_deadline) values(1,'Repas de Saint-Nicolas 2026','Samedi 28 novembre 2026 · Hall de l’Europe, Dottignies · Apéritif 18h00 · Repas 19h00',false,'2026-11-20 23:59:59+01');
 create table public.menus (id uuid primary key default gen_random_uuid(),name text not null check(length(name) between 1 and 120),category text not null check(category in ('adulte','enfant')),price_cents integer not null check(price_cents between 1 and 999900),sort_order integer not null default 0,active boolean not null default true);
+insert into public.menus(name,category,price_cents,sort_order,active) values
+('Menu adulte – Jambon braisé, grenailles, légumes, sauce crème au poivre (plat, café, dessert)','adulte',1700,1,true),
+('Menu enfant – Jambon braisé, grenailles, légumes (plat, dessert)','enfant',1300,2,true);
 create table public.admin_users (user_id uuid primary key references auth.users(id) on delete cascade);
 create table public.bookings (id uuid primary key default gen_random_uuid(),reference text unique not null default upper(substr(replace(gen_random_uuid()::text,'-',''),1,10)),first_name text not null,last_name text not null,email text not null,phone text not null,team text,notes text,items jsonb not null,total_cents integer not null check(total_cents>0),status text not null default 'pending' check(status in ('pending','paid','failed','cancelled','expired')),mollie_payment_id text unique,created_at timestamptz not null default now(),paid_at timestamptz);
 create index bookings_created_idx on public.bookings(created_at desc);

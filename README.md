@@ -1,3 +1,13 @@
+# Thème JS Dottignies — Saint-Nicolas 2026
+
+- Date : **samedi 28 novembre 2026** ; Hall de l’Europe à Dottignies ; apéritif 18h, repas 19h.
+- Réservations jusqu’au **20 novembre inclus** (échéance préconfigurée à 23h59 heure belge).
+- Menus initialisés dans `supabase/schema.sql` : adulte **17 €**, enfant **13 €**.
+- **Option végétarienne** : à préciser dans le champ remarques (pas de décompte séparé automatique dans cette V1).
+- Le logo est un **extrait de l’affiche transmise**, à remplacer éventuellement par le fichier officiel HD du club.
+- Les réservations sont **fermées par défaut** jusqu’aux tests de paiement. Aucun paiement n’est possible tant que Mollie et Supabase ne sont pas configurés.
+- Le projet contient les mêmes fonctions de paiement que la V1 précédente : il faut les déployer et tester avant publication.
+
 # JS Dottignies — Repas de Saint-Nicolas
 
 Application mobile-first de réservation avec menus adultes/enfants configurables, paiement Mollie (Bancontact disponible selon l'activation du compte), administration Supabase et export CSV.
