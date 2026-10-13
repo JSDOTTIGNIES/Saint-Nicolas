@@ -1,3 +1,13 @@
+# Nouvelle identité visuelle JS Dottignies – Saint-Nicolas 2026
+
+Cette version conserve les fichiers Supabase et le fonctionnement de la V1, avec le logo officiel transparent, un thème basket rouge/noir, une illustration de Saint-Nicolas et un formulaire clair.
+
+**Mise à jour GitHub :** décompresser et importer les fichiers en remplaçant les fichiers existants. Le dépôt GitHub Pages est `JSDOTTIGNIES/Saint-Nicolas`.
+
+**Attention :** le paiement nécessite toujours les fonctions Supabase et Mollie. Le site ne doit pas être ouvert aux réservations réelles avant tests complets.
+
+---
+
 # Thème JS Dottignies — Saint-Nicolas 2026
 
 - Date : **samedi 28 novembre 2026** ; Hall de l’Europe à Dottignies ; apéritif 18h, repas 19h.
