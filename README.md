@@ -23,7 +23,7 @@ Application mobile-first de réservation avec menus adultes/enfants configurable
 3. Dans **Authentication > Users**, créer le compte administrateur avec un mot de passe fort. Désactiver l'inscription publique si elle n'est pas nécessaire.
 4. Copier son UUID et exécuter dans SQL Editor : `insert into public.admin_users(user_id) values ('UUID-ADMIN');`.
 5. Dans **Project Settings > API**, relever l'URL et la clé **publishable/anon** (jamais `service_role`).
-6. Modifier `assets/config.js` et y renseigner ces deux valeurs PUBLIQUES. Le fichier est inclus dans le dépôt pour simplifier GitHub Pages. Ne jamais y ajouter de secret.
+6. `assets/config.js` contient déjà les deux valeurs PUBLIQUES du projet Saint-Nicolas. Le fichier est inclus dans le dépôt pour simplifier GitHub Pages. Ne jamais y ajouter de secret.
 
 ## 3. Mollie et fonctions Supabase
 1. Activer Bancontact dans le compte Mollie, puis obtenir une clé API **test** pour les essais et **live** pour la production.

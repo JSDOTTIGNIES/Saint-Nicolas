@@ -1,3 +1,3 @@
-// Clés PUBLIQUES uniquement. Remplacer les deux valeurs après création du projet Supabase.
-export const SUPABASE_URL = 'https://VOTRE-PROJET.supabase.co';
-export const SUPABASE_ANON_KEY = 'VOTRE_CLE_PUBLISHABLE_OU_ANON';
+// Configuration publique Supabase — ne jamais ajouter de clé secrète ici.
+export const SUPABASE_URL = 'https://zoxfytpebobmqzfjvbwy.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_WoXmj7f97e74Le4gtGZFsg_H3MpeWs7';
