@@ -22,6 +22,7 @@ const {data:booking,error:be}=await admin.from('bookings').insert({first_name,la
 const endpoint=`${url}/functions/v1/mollie-webhook?token=${encodeURIComponent(env('WEBHOOK_SECRET'))}`;
 const body={amount:{currency:'EUR',value:(total/100).toFixed(2)},description:`Saint-Nicolas JS Dottignies ${booking.reference}`,redirectUrl:`${siteUrl}/?payment=return`,webhookUrl:endpoint,metadata:{booking_id:booking.id},locale:'fr_BE'};
 const r=await fetch('https://api.mollie.com/v2/payments',{method:'POST',headers:{Authorization:`Bearer ${mollieKey}`,'Content-Type':'application/json'},body:JSON.stringify(body)});const payment=await r.json();if(!r.ok||!payment.id||!payment._links?.checkout?.href){await admin.from('bookings').update({status:'failed'}).eq('id',booking.id);throw Error('Paiement temporairement indisponible')}
-await admin.from('bookings').update({mollie_payment_id:payment.id}).eq('id',booking.id);
+const {data:linked,error:linkError}=await admin.from('bookings').update({mollie_payment_id:payment.id}).eq('id',booking.id).is('mollie_payment_id',null).select('id').single();
+if(linkError||!linked){console.error('Payment linkage failed',linkError);return reply({error:'Paiement créé mais réservation non finalisée. Contactez le club avant de réessayer.',reference:booking.reference},503)}
 return reply({checkout_url:payment._links.checkout.href,reference:booking.reference});
 }catch(e){console.error(e);return reply({error:'Impossible de préparer le paiement. Veuillez réessayer.'},500)}});

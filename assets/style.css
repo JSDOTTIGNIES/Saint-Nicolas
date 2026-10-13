@@ -37,3 +37,9 @@ main{position:relative;max-width:1040px;padding:0 20px 50px}
 footer{position:relative;display:flex;justify-content:center;align-items:center;gap:25px;color:#fff0ed;max-width:950px;margin:auto;padding:25px 20px 45px;text-align:left}footer img{width:120px;height:95px;object-fit:contain}footer p{font-size:13px;color:#e5bec2;margin:6px 0}
 @media(max-width:720px){header{flex-wrap:wrap;gap:8px}.club-logo{width:74px;height:60px}.brand strong{font-size:13px}.brand small{font-size:11px}nav button{padding:9px 11px;font-size:12px}.hero{min-height:440px;padding:32px 10px 20px;text-align:left}.hero .saint-art{width:43%;height:220px;top:8px;right:-12px;opacity:.9}.hero h1{font-size:clamp(38px,9vw,56px);max-width:78%;margin-top:15px}.hero .eyebrow{max-width:65%;font-size:10px}.hero>p:first-of-type{max-width:65%}.hero .event-highlights{margin-top:35px}.hero .caterer{margin-top:14px}.hero p{font-size:13px}.event-highlights span{font-size:11px;padding:8px 10px}.reservation-heading{flex-direction:column;align-items:flex-start}.reservation-heading strong{font-size:18px}#menu-list{grid-template-columns:1fr}.menu{min-height:105px;flex-direction:row;align-items:center}.menu b{font-size:17px}.menu strong{font-size:17px}.fields{grid-template-columns:1fr}.panel{padding:20px 16px}.stats{grid-template-columns:1fr 1fr}footer{gap:12px}footer img{width:82px}}
 @media(max-width:390px){.hero h1{font-size:36px}.hero .saint-art{opacity:.65}.menu{flex-wrap:wrap}.qty{width:100%}}
+
+/* Statuts des paiements dans l'administration */
+.payment-status{display:inline-block;border-radius:999px;padding:4px 9px;font-weight:700;font-size:.85em;background:#f1f1f1;color:#303030}
+.payment-paid{background:#dff5e5;color:#146c35}
+.payment-pending{background:#fff0ce;color:#855600}
+.payment-failed,.payment-cancelled,.payment-expired{background:#ffe0e0;color:#a11a25}
