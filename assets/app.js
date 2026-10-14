@@ -1,71 +1,715 @@
-import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {SUPABASE_URL,SUPABASE_ANON_KEY} from './config.js';
-const sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);const $=s=>document.querySelector(s);const money=n=>new Intl.NumberFormat('fr-BE',{style:'currency',currency:'EUR'}).format(n);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let menus=[],settings=null,counts={},bookings=[];function notify(s){$('#notice').textContent=s;$('#notice').classList.remove('hidden')}function total(){return menus.reduce((s,m)=>s+(counts[m.id]||0)*m.price_cents,0)}function drawMenus(){let active=menus.filter(m=>m.active);$('#menu-list').innerHTML=active.length?active.map(m=>`<div class="menu"><div><b>${esc(m.name)}</b><small>${m.category==='enfant'?'Enfant':'Adulte'} · <strong>${money(m.price_cents/100)}</strong></small></div><div class="qty"><button type="button" data-id="${m.id}" data-step="-1" aria-label="Retirer">−</button><output>${counts[m.id]||0}</output><button type="button" data-id="${m.id}" data-step="1" aria-label="Ajouter">+</button></div></div>`).join(''):'<p>Aucun menu disponible pour le moment.</p>';$('#total').textContent=money(total()/100);$('#pay-button').disabled=!settings?.booking_open||!active.length;$('#transfer-button').disabled=!settings?.booking_open||!active.length}
-$('#menu-list').addEventListener('click',e=>{const b=e.target.closest('button[data-id]');if(!b)return;const id=b.dataset.id;counts[id]=Math.max(0,Math.min(100,(counts[id]||0)+Number(b.dataset.step)));drawMenus()});
-async function loadPublic(){const [a,b]=await Promise.all([sb.from('event_settings').select('*').eq('id',1).single(),sb.from('menus').select('*').eq('active',true).order('sort_order')]);if(a.error||b.error){notify('Impossible de charger les informations. Vérifiez la configuration Supabase.');return}settings=a.data;menus=b.data;$('#event-info').textContent=settings.event_details||'';if(!settings.booking_open)notify('Les réservations sont actuellement fermées.');drawMenus()}
-$('#booking-form').addEventListener('submit',async e=>{e.preventDefault();if(total()<=0)return notify('Sélectionnez au moins un repas.');const btn=$('#pay-button');btn.disabled=true;btn.textContent='Préparation du paiement…';try{const f=new FormData(e.target);const payload={customer:{first_name:f.get('first_name'),last_name:f.get('last_name'),email:f.get('email'),phone:f.get('phone'),team:f.get('team'),notes:f.get('notes')},items:menus.filter(m=>counts[m.id]>0).map(m=>({menu_id:m.id,quantity:counts[m.id]}))};const {data,error}=await sb.functions.invoke('create-checkout',{body:payload});if(error)throw new Error(data?.error||error.message);if(!data?.checkout_url)throw new Error('Lien de paiement indisponible');window.location.assign(data.checkout_url)}catch(err){notify('Paiement non lancé : '+err.message);btn.textContent='Payer en ligne (Bancontact) →';btn.disabled=false}});
-// Paiement par virement : aucune confirmation de paiement avant contrôle bancaire.
-let transferBusy=false;
-$('#transfer-button').onclick=async()=>{
-  const form=$('#booking-form');
-  if(!form.reportValidity())return;
-  if(total()<=0)return notify('Sélectionnez au moins un repas.');
-  if(transferBusy)return;
-  transferBusy=true;
-  const button=$('#transfer-button');
-  const pay=$('#pay-button');
-  button.disabled=true;pay.disabled=true;button.textContent='Enregistrement de la réservation…';
-  try{
-    const f=new FormData(form);
-    const payload={customer:{first_name:f.get('first_name'),last_name:f.get('last_name'),email:f.get('email'),phone:f.get('phone'),team:f.get('team'),notes:f.get('notes')},items:menus.filter(m=>counts[m.id]>0).map(m=>({menu_id:m.id,quantity:counts[m.id]}))};
-    const {data,error}=await sb.functions.invoke('create-transfer',{body:payload});
-    if(error||!data?.reference||!Number.isInteger(data.total_cents))throw new Error(data?.error||error?.message||'Réponse du serveur invalide');
-    $('#transfer-beneficiary').textContent=data.beneficiary||'Jeunesse Sportive Dottignies';
-    $('#transfer-iban').textContent=data.iban||'BE64 0688 9493 4252';
-    $('#transfer-amount').textContent=money(data.total_cents/100);
-    $('#transfer-reference').textContent=data.communication||data.reference;
-    $('#transfer-result').classList.remove('hidden');
-    form.classList.add('hidden');
-    $('#notice').classList.add('hidden');
-    $('#transfer-result').scrollIntoView({behavior:'smooth',block:'start'});
-    $('#transfer-result').focus({preventScroll:true});
-  }catch(err){notify('Réservation par virement non enregistrée : '+err.message)}
-  finally{transferBusy=false;button.textContent='Je paie par virement bancaire';button.disabled=false;pay.disabled=false}
-};
-$('#new-booking').onclick=()=>{counts={};$('#booking-form').reset();$('#booking-form').classList.remove('hidden');$('#transfer-result').classList.add('hidden');drawMenus();$('#booking-form').scrollIntoView({behavior:'smooth'})};
-function showTab(admin){$('#public-view').classList.toggle('hidden',admin);$('#admin-view').classList.toggle('hidden',!admin);$('#public-tab').classList.toggle('active',!admin);$('#admin-tab').classList.toggle('active',admin);if(admin)loadAdmin()}
-$('#public-tab').onclick=()=>showTab(false);$('#admin-tab').onclick=()=>showTab(true);
-$('#login-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const {error}=await sb.auth.signInWithPassword({email:f.get('email'),password:f.get('password')});if(error)return alert(error.message);loadAdmin()};$('#logout').onclick=async()=>{await sb.auth.signOut();loadAdmin()};$('#refresh').onclick=()=>loadAdmin();
-async function loadAdmin(){const {data:{user}}=await sb.auth.getUser();if(!user){$('#login-panel').classList.remove('hidden');$('#admin-panel').classList.add('hidden');return}const {data:role}=await sb.from('admin_users').select('user_id').eq('user_id',user.id).maybeSingle();if(!role){$('#login-panel').classList.remove('hidden');$('#admin-panel').classList.add('hidden');alert('Ce compte ne dispose pas des droits administrateur.');return}$('#login-panel').classList.add('hidden');$('#admin-panel').classList.remove('hidden');const [s,m,b]=await Promise.all([sb.from('event_settings').select('*').eq('id',1).single(),sb.from('menus').select('*').order('sort_order'),sb.from('admin_booking_overview').select('*').order('created_at',{ascending:false}).limit(5000)]);if(s.error||m.error||b.error)return alert('Erreur de chargement de l’administration');settings=s.data;menus=m.data;bookings=b.data;const form=$('#settings-form');form.elements.title.value=settings.title;form.elements.event_details.value=settings.event_details||'';form.elements.booking_open.checked=settings.booking_open;form.elements.booking_deadline.value=settings.booking_deadline?new Date(settings.booking_deadline).toLocaleString('sv-SE').replace(' ','T').slice(0,16):'';renderAdmin()}
-function renderAdmin(){const paid=bookings.filter(b=>b.status==='paid'),count=paid.reduce((s,b)=>s+(b.items||[]).reduce((x,i)=>x+i.quantity,0),0),sum=paid.reduce((s,b)=>s+b.total_cents,0);$('#stats').innerHTML=`<div class="stat"><strong>${paid.length}</strong><small>Réservations payées</small></div><div class="stat"><strong>${count}</strong><small>Repas payés</small></div><div class="stat"><strong>${money(sum/100)}</strong><small>Total encaissé brut</small></div>`;$('#admin-menus').innerHTML=menus.map(m=>`<div class="menu-admin"><span>${esc(m.name)} · ${esc(m.category)} · ${money(m.price_cents/100)} ${m.active?'':'(inactif)'}</span><button data-edit="${m.id}">Modifier</button></div>`).join('');$('#booking-rows').innerHTML=bookings.map(b=>`<tr><td>${esc(b.reference)}</td><td>${esc(b.last_name)} ${esc(b.first_name)}</td><td>${esc(b.email)}<br>${esc(b.phone)}</td><td>${(b.items||[]).map(i=>esc(i.name)+' × '+i.quantity).join('<br>')}<br><small>${esc(b.notes)}</small></td><td>${money(b.total_cents/100)}</td><td><span class="payment-status payment-${esc(b.status)}">${esc(({paid:'Payé',pending:'En attente',failed:'Échoué',cancelled:'Annulé',expired:'Expiré',transfer_pending:'Virement attendu',transfer_expired:'Virement expiré'})[b.status]||b.status)}</span><br><small>${b.payment_method==='transfer'?'Virement bancaire':'Mollie / Bancontact'}</small></td><td>${b.payment_method==='transfer'&&b.status==='transfer_pending'?`<button type="button" class="confirm-transfer" data-confirm-transfer="${esc(b.id)}">Confirmer le virement reçu</button>`:'—'}</td><td>${new Date(b.created_at).toLocaleString('fr-BE')}</td></tr>`).join('')}
-$('#booking-rows').addEventListener('click',async e=>{const button=e.target.closest('[data-confirm-transfer]');if(!button)return;const id=button.dataset.confirmTransfer;const booking=bookings.find(b=>b.id===id);if(!booking||booking.payment_method!=='transfer'||booking.status!=='transfer_pending')return;const message=`Confirmer la réception bancaire de ${money(booking.total_cents/100)} pour ${booking.last_name} ${booking.first_name} (réf. ${booking.reference}) ?\n\nCette action marque la réservation comme payée. Vérifiez d'abord le virement sur le compte du club.`;if(!window.confirm(message))return;button.disabled=true;button.textContent='Validation…';const {error}=await sb.rpc('confirm_transfer_payment',{booking_uuid:id});if(error){alert('Impossible de confirmer ce virement : '+error.message);button.disabled=false;button.textContent='Confirmer le virement reçu';return}
-button.textContent = 'Envoi de l’e-mail…';
 
-try {
-  const { data: emailResult, error: emailError } =
-    await sb.functions.invoke('confirm-transfer-email', {
-      body: { booking_id: id }
-    });
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
-  if (emailError || !emailResult?.success) {
-    alert(
-      'Le virement est confirmé comme payé, mais l’e-mail n’a pas pu être envoyé. Vérifiez les logs Supabase.'
-    );
-  } else {
-    alert('Virement confirmé et e-mail de confirmation envoyé !');
-  }
-} catch (err) {
-  alert(
-    'Le virement est confirmé, mais une erreur est survenue lors de l’envoi de l’e-mail.'
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = s => document.querySelector(s);
+
+const money = n =>
+  new Intl.NumberFormat('fr-BE', {
+    style: 'currency',
+    currency: 'EUR'
+  }).format(n);
+
+const esc = v =>
+  String(v ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[c]));
+
+let menus = [];
+let settings = null;
+let counts = {};
+let bookings = [];
+let transferBusy = false;
+
+function notify(message) {
+  $('#notice').textContent = message;
+  $('#notice').classList.remove('hidden');
+}
+
+function total() {
+  return menus.reduce(
+    (sum, menu) =>
+      sum + (counts[menu.id] || 0) * menu.price_cents,
+    0
   );
 }
 
-await loadAdmin();
+// Vérification de la fermeture automatique.
+function reservationsOuvertes() {
+  if (!settings?.booking_open) return false;
+
+  if (settings.booking_deadline) {
+    const deadline = new Date(settings.booking_deadline).getTime();
+
+    if (!Number.isFinite(deadline) || Date.now() > deadline) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function verifierFermeture() {
+  if (!settings) return;
+
+  const ouvertes = reservationsOuvertes();
+
+  if (!ouvertes) {
+    notify('Les réservations sont clôturées.');
+  }
+
+  $('#pay-button').disabled =
+    !ouvertes || total() <= 0;
+
+  $('#transfer-button').disabled =
+    !ouvertes || total() <= 0;
+}
+
+function drawMenus() {
+  const active = menus.filter(m => m.active);
+
+  $('#menu-list').innerHTML = active.length
+    ? active.map(m => `
+        <div class="menu">
+          <div>
+            <b>${esc(m.name)}</b>
+            <small>
+              ${m.category === 'enfant' ? 'Enfant' : 'Adulte'}
+              · <strong>${money(m.price_cents / 100)}</strong>
+            </small>
+          </div>
+          <div class="qty">
+            <button type="button" data-id="${m.id}" data-step="-1" aria-label="Retirer">−</button>
+            <output>${counts[m.id] || 0}</output>
+            <button type="button" data-id="${m.id}" data-step="1" aria-label="Ajouter">+</button>
+          </div>
+        </div>
+      `).join('')
+    : '<p>Aucun menu disponible pour le moment.</p>';
+
+  $('#total').textContent = money(total() / 100);
+
+  verifierFermeture();
+}
+
+$('#menu-list').addEventListener('click', e => {
+  const button = e.target.closest('button[data-id]');
+  if (!button) return;
+
+  const id = button.dataset.id;
+
+  counts[id] = Math.max(
+    0,
+    Math.min(100, (counts[id] || 0) + Number(button.dataset.step))
+  );
+
+  drawMenus();
 });
 
-$('#admin-menus').onclick=e=>{const b=e.target.closest('[data-edit]');if(!b)return;const m=menus.find(x=>x.id===b.dataset.edit),f=$('#menu-form');f.elements.id.value=m.id;f.elements.name.value=m.name;f.elements.category.value=m.category;f.elements.price.value=(m.price_cents/100).toFixed(2);f.elements.sort_order.value=m.sort_order;f.elements.active.checked=m.active;f.scrollIntoView({behavior:'smooth'})};$('#reset-menu').onclick=()=>$('#menu-form').reset();
-$('#menu-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),id=f.get('id'),row={name:f.get('name'),category:f.get('category'),price_cents:Math.round(Number(f.get('price'))*100),sort_order:Number(f.get('sort_order')),active:f.get('active')==='on'};if(!row.price_cents||row.price_cents<1)return alert('Prix invalide');const {error}=id?await sb.from('menus').update(row).eq('id',id):await sb.from('menus').insert(row);if(error)return alert(error.message);e.target.reset();e.target.elements.id.value='';loadAdmin()};
-$('#settings-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),d=f.get('booking_deadline');const {error}=await sb.from('event_settings').update({title:f.get('title'),event_details:f.get('event_details'),booking_open:f.get('booking_open')==='on',booking_deadline:d?new Date(d).toISOString():null}).eq('id',1);if(error)return alert(error.message);alert('Paramètres enregistrés');loadAdmin()};
-$('#export').onclick=()=>{const rows=[['Référence','Nom','Prénom','E-mail','Téléphone','Équipe','Remarques / allergies','Menus','Total EUR','Mode de paiement','Statut','Date'],...bookings.map(b=>[b.reference,b.last_name,b.first_name,b.email,b.phone,b.team,b.notes,(b.items||[]).map(i=>i.name+' x '+i.quantity).join(' | '),(b.total_cents/100).toFixed(2).replace('.',','),b.payment_method==='transfer'?'Virement bancaire':'Mollie',b.status,b.created_at])];const csv='\ufeff'+rows.map(r=>r.map(v=>{let value=String(v??'');if(/^[\s]*[=+@-]/.test(value))value="'"+value;return '"'+value.replace(/"/g,'""')+'"'}).join(';')).join('\r\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='reservations-saint-nicolas.csv';a.click();URL.revokeObjectURL(a.href)};
-const params=new URLSearchParams(location.search);if(params.has('payment')){notify('Retour du paiement : le statut est vérifié par le serveur. Le club confirmera votre réservation après validation bancaire.');history.replaceState({},'',location.pathname)}loadPublic();
+async function loadPublic() {
+  const [a, b] = await Promise.all([
+    sb.from('event_settings').select('*').eq('id', 1).single(),
+    sb.from('menus').select('*').eq('active', true).order('sort_order')
+  ]);
+
+  if (a.error || b.error) {
+    notify(
+      'Impossible de charger les informations. Vérifiez la configuration Supabase.'
+    );
+    return;
+  }
+
+  settings = a.data;
+  menus = b.data;
+
+  $('#event-info').textContent = settings.event_details || '';
+
+  drawMenus();
+}
+
+// Paiement Bancontact.
+$('#booking-form').addEventListener('submit', async e => {
+  e.preventDefault();
+
+  if (!reservationsOuvertes()) {
+    return notify('Les réservations sont clôturées.');
+  }
+
+  if (total() <= 0) {
+    return notify('Sélectionnez au moins un repas.');
+  }
+
+  const button = $('#pay-button');
+  button.disabled = true;
+  button.textContent = 'Préparation du paiement…';
+
+  try {
+    const f = new FormData(e.target);
+
+    const payload = {
+      customer: {
+        first_name: f.get('first_name'),
+        last_name: f.get('last_name'),
+        email: f.get('email'),
+        phone: f.get('phone'),
+        team: f.get('team'),
+        notes: f.get('notes')
+      },
+      items: menus
+        .filter(m => counts[m.id] > 0)
+        .map(m => ({
+          menu_id: m.id,
+          quantity: counts[m.id]
+        }))
+    };
+
+    const { data, error } =
+      await sb.functions.invoke('create-checkout', {
+        body: payload
+      });
+
+    if (error) {
+      throw new Error(data?.error || error.message);
+    }
+
+    if (!data?.checkout_url) {
+      throw new Error('Lien de paiement indisponible');
+    }
+
+    window.location.assign(data.checkout_url);
+
+  } catch (err) {
+    notify('Paiement non lancé : ' + err.message);
+    button.textContent = 'Payer en ligne (Bancontact) →';
+    verifierFermeture();
+  }
+});
+
+// Paiement par virement bancaire.
+$('#transfer-button').onclick = async () => {
+  const form = $('#booking-form');
+
+  if (!reservationsOuvertes()) {
+    return notify('Les réservations sont clôturées.');
+  }
+
+  if (!form.reportValidity()) return;
+
+  if (total() <= 0) {
+    return notify('Sélectionnez au moins un repas.');
+  }
+
+  if (transferBusy) return;
+
+  transferBusy = true;
+
+  const button = $('#transfer-button');
+  const pay = $('#pay-button');
+
+  button.disabled = true;
+  pay.disabled = true;
+  button.textContent = 'Enregistrement de la réservation…';
+
+  try {
+    const f = new FormData(form);
+
+    const payload = {
+      customer: {
+        first_name: f.get('first_name'),
+        last_name: f.get('last_name'),
+        email: f.get('email'),
+        phone: f.get('phone'),
+        team: f.get('team'),
+        notes: f.get('notes')
+      },
+      items: menus
+        .filter(m => counts[m.id] > 0)
+        .map(m => ({
+          menu_id: m.id,
+          quantity: counts[m.id]
+        }))
+    };
+
+    const { data, error } =
+      await sb.functions.invoke('create-transfer', {
+        body: payload
+      });
+
+    if (
+      error ||
+      !data?.reference ||
+      !Number.isInteger(data.total_cents)
+    ) {
+      throw new Error(
+        data?.error ||
+        error?.message ||
+        'Réponse du serveur invalide'
+      );
+    }
+
+    $('#transfer-beneficiary').textContent =
+      data.beneficiary || 'Jeunesse Sportive Dottignies';
+
+    $('#transfer-iban').textContent =
+      data.iban || 'BE64 0688 9493 4252';
+
+    $('#transfer-amount').textContent =
+      money(data.total_cents / 100);
+
+    $('#transfer-reference').textContent =
+      data.communication || data.reference;
+
+    $('#transfer-result').classList.remove('hidden');
+    form.classList.add('hidden');
+    $('#notice').classList.add('hidden');
+
+    $('#transfer-result').scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+
+    $('#transfer-result').focus({
+      preventScroll: true
+    });
+
+  } catch (err) {
+    notify(
+      'Réservation par virement non enregistrée : ' + err.message
+    );
+  } finally {
+    transferBusy = false;
+    button.textContent = 'Je paie par virement bancaire';
+    verifierFermeture();
+  }
+};
+
+$('#new-booking').onclick = () => {
+  counts = {};
+
+  $('#booking-form').reset();
+  $('#booking-form').classList.remove('hidden');
+  $('#transfer-result').classList.add('hidden');
+
+  drawMenus();
+  $('#booking-form').scrollIntoView({
+    behavior: 'smooth'
+  });
+};
+
+function showTab(admin) {
+  $('#public-view').classList.toggle('hidden', admin);
+  $('#admin-view').classList.toggle('hidden', !admin);
+  $('#public-tab').classList.toggle('active', !admin);
+  $('#admin-tab').classList.toggle('active', admin);
+
+  if (admin) loadAdmin();
+}
+
+$('#public-tab').onclick = () => showTab(false);
+$('#admin-tab').onclick = () => showTab(true);
+
+$('#login-form').onsubmit = async e => {
+  e.preventDefault();
+
+  const f = new FormData(e.target);
+
+  const { error } = await sb.auth.signInWithPassword({
+    email: f.get('email'),
+    password: f.get('password')
+  });
+
+  if (error) return alert(error.message);
+
+  loadAdmin();
+};
+
+$('#logout').onclick = async () => {
+  await sb.auth.signOut();
+  loadAdmin();
+};
+
+$('#refresh').onclick = () => loadAdmin();
+
+async function loadAdmin() {
+  const { data: { user } } = await sb.auth.getUser();
+
+  if (!user) {
+    $('#login-panel').classList.remove('hidden');
+    $('#admin-panel').classList.add('hidden');
+    return;
+  }
+
+  const { data: role } = await sb
+    .from('admin_users')
+    .select('user_id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!role) {
+    $('#login-panel').classList.remove('hidden');
+    $('#admin-panel').classList.add('hidden');
+
+    alert('Ce compte ne dispose pas des droits administrateur.');
+    return;
+  }
+
+  $('#login-panel').classList.add('hidden');
+  $('#admin-panel').classList.remove('hidden');
+
+  const [s, m, b] = await Promise.all([
+    sb.from('event_settings').select('*').eq('id', 1).single(),
+    sb.from('menus').select('*').order('sort_order'),
+    sb.from('admin_booking_overview')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(5000)
+  ]);
+
+  if (s.error || m.error || b.error) {
+    return alert('Erreur de chargement de l’administration');
+  }
+
+  settings = s.data;
+  menus = m.data;
+  bookings = b.data;
+
+  const form = $('#settings-form');
+
+  form.elements.title.value = settings.title;
+  form.elements.event_details.value = settings.event_details || '';
+  form.elements.booking_open.checked = settings.booking_open;
+
+  form.elements.booking_deadline.value =
+    settings.booking_deadline
+      ? new Date(settings.booking_deadline)
+          .toLocaleString('sv-SE')
+          .replace(' ', 'T')
+          .slice(0, 16)
+      : '';
+
+  renderAdmin();
+}
+
+function renderAdmin() {
+  const paid = bookings.filter(b => b.status === 'paid');
+
+  const count = paid.reduce(
+    (sum, b) =>
+      sum + (b.items || []).reduce(
+        (x, i) => x + i.quantity,
+        0
+      ),
+    0
+  );
+
+  const sum = paid.reduce(
+    (s, b) => s + b.total_cents,
+    0
+  );
+
+  $('#stats').innerHTML = `
+    <div class="stat">
+      <strong>${paid.length}</strong>
+      <small>Réservations payées</small>
+    </div>
+    <div class="stat">
+      <strong>${count}</strong>
+      <small>Repas payés</small>
+    </div>
+    <div class="stat">
+      <strong>${money(sum / 100)}</strong>
+      <small>Total encaissé brut</small>
+    </div>
+  `;
+
+  $('#admin-menus').innerHTML = menus.map(m => `
+    <div class="menu-admin">
+      <span>
+        ${esc(m.name)} · ${esc(m.category)}
+        · ${money(m.price_cents / 100)}
+        ${m.active ? '' : '(inactif)'}
+      </span>
+      <button data-edit="${m.id}">Modifier</button>
+    </div>
+  `).join('');
+
+  $('#booking-rows').innerHTML = bookings.map(b => `
+    <tr>
+      <td>${esc(b.reference)}</td>
+      <td>${esc(b.last_name)} ${esc(b.first_name)}</td>
+      <td>${esc(b.email)}<br>${esc(b.phone)}</td>
+      <td>
+        ${(b.items || []).map(
+          i => esc(i.name) + ' × ' + i.quantity
+        ).join('<br>')}
+        <br><small>${esc(b.notes)}</small>
+      </td>
+      <td>${money(b.total_cents / 100)}</td>
+      <td>
+        <span class="payment-status payment-${esc(b.status)}">
+          ${esc(({
+            paid: 'Payé',
+            pending: 'En attente',
+            failed: 'Échoué',
+            cancelled: 'Annulé',
+            expired: 'Expiré',
+            transfer_pending: 'Virement attendu',
+            transfer_expired: 'Virement expiré'
+          })[b.status] || b.status)}
+        </span>
+        <br>
+        <small>
+          ${b.payment_method === 'transfer'
+            ? 'Virement bancaire'
+            : 'Mollie / Bancontact'}
+        </small>
+      </td>
+      <td>
+        ${b.payment_method === 'transfer' &&
+          b.status === 'transfer_pending'
+          ? `<button type="button"
+              class="confirm-transfer"
+              data-confirm-transfer="${esc(b.id)}">
+              Confirmer le virement reçu
+            </button>`
+          : '—'}
+      </td>
+      <td>
+        ${new Date(b.created_at).toLocaleString('fr-BE')}
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Confirmation manuelle du virement et e-mail automatique.
+$('#booking-rows').addEventListener('click', async e => {
+  const button = e.target.closest('[data-confirm-transfer]');
+  if (!button) return;
+
+  const id = button.dataset.confirmTransfer;
+  const booking = bookings.find(b => b.id === id);
+
+  if (
+    !booking ||
+    booking.payment_method !== 'transfer' ||
+    booking.status !== 'transfer_pending'
+  ) return;
+
+  const message =
+    `Confirmer la réception bancaire de ${
+      money(booking.total_cents / 100)
+    } pour ${booking.last_name} ${booking.first_name} ` +
+    `(réf. ${booking.reference}) ?\n\n` +
+    'Cette action marque la réservation comme payée. ' +
+    "Vérifiez d'abord le virement sur le compte du club.";
+
+  if (!window.confirm(message)) return;
+
+  button.disabled = true;
+  button.textContent = 'Validation…';
+
+  const { error } = await sb.rpc(
+    'confirm_transfer_payment',
+    { booking_uuid: id }
+  );
+
+  if (error) {
+    alert(
+      'Impossible de confirmer ce virement : ' + error.message
+    );
+    button.disabled = false;
+    button.textContent = 'Confirmer le virement reçu';
+    return;
+  }
+
+  button.textContent = 'Envoi de l’e-mail…';
+
+  try {
+    const { data: emailResult, error: emailError } =
+      await sb.functions.invoke('confirm-transfer-email', {
+        body: { booking_id: id }
+      });
+
+    if (emailError || !emailResult?.success) {
+      alert(
+        'Le virement est confirmé comme payé, mais ' +
+        "l’e-mail n’a pas pu être envoyé. " +
+        'Vérifiez les logs Supabase.'
+      );
+    } else {
+      alert(
+        'Virement confirmé et e-mail de confirmation envoyé !'
+      );
+    }
+
+  } catch (err) {
+    alert(
+      'Le virement est confirmé, mais une erreur est ' +
+      "survenue lors de l’envoi de l’e-mail."
+    );
+  }
+
+  await loadAdmin();
+});
+
+$('#admin-menus').onclick = e => {
+  const button = e.target.closest('[data-edit]');
+  if (!button) return;
+
+  const m = menus.find(x => x.id === button.dataset.edit);
+  const f = $('#menu-form');
+
+  f.elements.id.value = m.id;
+  f.elements.name.value = m.name;
+  f.elements.category.value = m.category;
+  f.elements.price.value = (m.price_cents / 100).toFixed(2);
+  f.elements.sort_order.value = m.sort_order;
+  f.elements.active.checked = m.active;
+
+  f.scrollIntoView({ behavior: 'smooth' });
+};
+
+$('#reset-menu').onclick = () => $('#menu-form').reset();
+
+$('#menu-form').onsubmit = async e => {
+  e.preventDefault();
+
+  const f = new FormData(e.target);
+  const id = f.get('id');
+
+  const row = {
+    name: f.get('name'),
+    category: f.get('category'),
+    price_cents: Math.round(Number(f.get('price')) * 100),
+    sort_order: Number(f.get('sort_order')),
+    active: f.get('active') === 'on'
+  };
+
+  if (!row.price_cents || row.price_cents < 1) {
+    return alert('Prix invalide');
+  }
+
+  const { error } = id
+    ? await sb.from('menus').update(row).eq('id', id)
+    : await sb.from('menus').insert(row);
+
+  if (error) return alert(error.message);
+
+  e.target.reset();
+  e.target.elements.id.value = '';
+  loadAdmin();
+};
+
+$('#settings-form').onsubmit = async e => {
+  e.preventDefault();
+
+  const f = new FormData(e.target);
+  const d = f.get('booking_deadline');
+
+  const { error } = await sb
+    .from('event_settings')
+    .update({
+      title: f.get('title'),
+      event_details: f.get('event_details'),
+      booking_open: f.get('booking_open') === 'on',
+      booking_deadline: d
+        ? new Date(d).toISOString()
+        : null
+    })
+    .eq('id', 1);
+
+  if (error) return alert(error.message);
+
+  alert('Paramètres enregistrés');
+  loadAdmin();
+};
+
+$('#export').onclick = () => {
+  const rows = [
+    [
+      'Référence',
+      'Nom',
+      'Prénom',
+      'E-mail',
+      'Téléphone',
+      'Équipe',
+      'Remarques / allergies',
+      'Menus',
+      'Total EUR',
+      'Mode de paiement',
+      'Statut',
+      'Date'
+    ],
+    ...bookings.map(b => [
+      b.reference,
+      b.last_name,
+      b.first_name,
+      b.email,
+      b.phone,
+      b.team,
+      b.notes,
+      (b.items || []).map(
+        i => i.name + ' x ' + i.quantity
+      ).join(' | '),
+      (b.total_cents / 100)
+        .toFixed(2)
+        .replace('.', ','),
+      b.payment_method === 'transfer'
+        ? 'Virement bancaire'
+        : 'Mollie',
+      b.status,
+      b.created_at
+    ])
+  ];
+
+  const csv = '\ufeff' + rows.map(r =>
+    r.map(v => {
+      let value = String(v ?? '');
+
+      if (/^[\s]*[=+@-]/.test(value)) {
+        value = "'" + value;
+      }
+
+      return '"' + value.replace(/"/g, '""') + '"';
+    }).join(';')
+  ).join('\r\n');
+
+  const a = document.createElement('a');
+
+  a.href = URL.createObjectURL(
+    new Blob([csv], {
+      type: 'text/csv;charset=utf-8'
+    })
+  );
+
+  a.download = 'reservations-saint-nicolas.csv';
+  a.click();
+
+  URL.revokeObjectURL(a.href);
+};
+
+// Vérification périodique de la fermeture.
+setInterval(verifierFermeture, 30000);
+
+// Vérification quand le visiteur revient sur l'onglet.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) verifierFermeture();
+});
+
+const params = new URLSearchParams(location.search);
+
+if (params.has('payment')) {
+  notify(
+    'Retour du paiement : le statut est vérifié par le serveur. ' +
+    'Le club confirmera votre réservation après validation bancaire.'
+  );
+
+  history.replaceState({}, '', location.pathname);
+}
+
+loadPublic();
