@@ -14,10 +14,37 @@ const {data:booking,error}=await admin.from('bookings').select('id,total_cents,s
 if(!booking.mollie_payment_id)return new Response('Retry',{status:503});
 if(booking.mollie_payment_id!==id)return new Response('Mismatch',{status:409});
 if(payment.amount?.currency!=='EUR'||Math.round(Number(payment.amount?.value)*100)!==booking.total_cents)return new Response('Amount mismatch',{status:409});
-const map:Record<string,string>={paid:'paid',failed:'failed',canceled:'cancelled',expired:'expired'};const status=map[payment.status];if(!status)return new Response('OK');if(booking.status==='paid'&&status!=='paid')return new Response('OK');
-const update:any={status,mollie_payment_id:id};if(status==='paid')update.paid_at=new Date().toISOString();const query=admin.from('bookings').update(update).eq('id',booking.id).eq('mollie_payment_id',id);
-const {data:updated,error:up}=await (status==='paid'?query.select('id').single():query.neq('status','paid').select('id').maybeSingle());
+const map:Record<string,string>={paid:'paid',failed:'failed',canceled:'cancelled',expired:'expired'};const status=map[payment.status];if(!status)return new Response('OK');if(booking.status==='admin_cancelled'){
+  // Ne jamais réactiver une réservation annulée par le club.
+  // Si le client paie malgré tout (paiement lancé avant annulation),
+  // enregistrer le paiement pour afficher le remboursement à effectuer.
+  if(status==='paid'){
+    const {error:lateError}=await admin.from('bookings').update({paid_at:new Date().toISOString()})
+      .eq('id',booking.id).eq('status','admin_cancelled').is('paid_at',null);
+    if(lateError)throw lateError;
+  }
+  return new Response('OK');
+}
+if(booking.status==='paid'&&status!=='paid')return new Response('OK');
+const update:any={status,mollie_payment_id:id};
+if(status==='paid')update.paid_at=new Date().toISOString();
+// Mise à jour conditionnelle : une annulation manuelle simultanée ne peut pas être écrasée.
+const {data:updated,error:up}=await admin.from('bookings').update(update)
+  .eq('id',booking.id).eq('mollie_payment_id',id).eq('status',booking.status)
+  .select('id').maybeSingle();
 if(up)throw up;
-if(status==='paid'&&!updated)throw Error('Paid update missing');
+if(!updated){
+  const {data:latest,error:readError}=await admin.from('bookings').select('status,paid_at').eq('id',booking.id).single();
+  if(readError)throw readError;
+  if(latest.status==='admin_cancelled'){
+    if(status==='paid'&&!latest.paid_at){
+      const {error:lateError}=await admin.from('bookings').update({paid_at:new Date().toISOString()})
+        .eq('id',booking.id).eq('status','admin_cancelled').is('paid_at',null);
+      if(lateError)throw lateError;
+    }
+    return new Response('OK');
+  }
+  if(status==='paid'&&latest.status!=='paid')throw Error('Paid update missing');
+}
 return new Response('OK');
 }catch(e){console.error(e);return new Response('Retry',{status:500})}});
